@@ -3,9 +3,18 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <math.h>
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
+
+
+int manhatten(int sy, int sx, int dy, int dx) 
+{
+    int tx = abs(sx - dx);
+    int ty = abs(sy - dy);
+    return (2 * (tx + ty));
+}
 
 char* map = NULL;
 uint32_t width = 0, height = 0;
@@ -72,7 +81,7 @@ uint32_t heap_remove()
 }
 
 
-uint32_t find_closest_exit(uint32_t point)
+uint32_t find_closest_exit(uint32_t point, uint32_t e_x, uint32_t e_y)
 {
     distances[point] = 0;
     path[point] = point;
@@ -85,7 +94,8 @@ uint32_t find_closest_exit(uint32_t point)
         int64_t x = u % width;
         int64_t y = u / height;
 
-        if (is_marked(map_exits, u))
+        //if (is_marked(map_exits, u))
+        if (x == e_x && y == e_y)
         {
             // found a way out
             return u;
@@ -102,7 +112,7 @@ uint32_t find_closest_exit(uint32_t point)
 
                 if (u != v && map[v] == '.' && !is_marked(closed_list, v))
                 {
-                    uint32_t alt = distances[u] + 1;
+                    uint32_t alt = distances[u] + 1 + manhatten(x, y, e_x, e_y);
 
                     if (alt < distances[v])
                     {
@@ -119,9 +129,9 @@ uint32_t find_closest_exit(uint32_t point)
     return width * height;
 }
 
-int parse_map_metadata(char* type, size_t len, uint32_t* width, uint32_t* height, FILE* fp)
+int parse_map_metadata(uint32_t* width, uint32_t* height, FILE* fp)
 {
-    char* line = (char*) malloc(len);
+    char* line = (char*) malloc(2048);
     char* pos;
     int c, status;
     size_t i;
@@ -129,7 +139,7 @@ int parse_map_metadata(char* type, size_t len, uint32_t* width, uint32_t* height
     i = status = 0;
     while ((c = fgetc(fp)) != EOF)
     {
-        if (i >= len || status == 7)
+        if (i >= 2048 || status == 3)
         {
             break;
         }
@@ -137,12 +147,7 @@ int parse_map_metadata(char* type, size_t len, uint32_t* width, uint32_t* height
         {
             line[i] = '\0';
 
-            if (i >= 5 && !strncmp("type ", line, 5))
-            {
-                strncpy(type, &line[5], i - 5);
-                status |= 1 << 2;
-            }
-            else if (i >= 7 && !strncmp("height ", line, 7))
+            if (i >= 7 && !strncmp("height ", line, 7))
             {
                 pos = NULL;
                 *height = strtoul(&line[7], &pos, 0);
@@ -150,7 +155,7 @@ int parse_map_metadata(char* type, size_t len, uint32_t* width, uint32_t* height
                 {
                     break;
                 }
-                status |= 1 << 1;
+                status |= 2;
             }
             else if (i >= 6 && !strncmp("width ", line, 6))
             {
@@ -161,10 +166,6 @@ int parse_map_metadata(char* type, size_t len, uint32_t* width, uint32_t* height
                     break;
                 }
                 status |= 1;
-            }
-            else
-            {
-                break;
             }
 
             i = 0; 
@@ -179,6 +180,26 @@ int parse_map_metadata(char* type, size_t len, uint32_t* width, uint32_t* height
     return status;
 }
 
+int read_map(FILE* file)
+{
+    // Read map
+    for (uint32_t i = 0; i < width * height; ++i)
+    {
+        int c;
+        
+        while ((c = fgetc(file)) != EOF && c != '.' && c != '@');
+
+        if (c == EOF)
+        {
+            return 0;
+        }
+
+        map[i] = c & 255;
+    }
+
+    return 1;
+}
+
 void print_path(uint32_t node)
 {
     if (path[node] != width * height && path[node] != node)
@@ -186,13 +207,27 @@ void print_path(uint32_t node)
         print_path(path[node]);
     }
     printf("(%u,%u)\n", node % width, node / width);
+    map[(node / width) * height + node % width] = 'x';
+}
+
+int read_int(uint32_t* i, char* str)
+{
+    char* pos = NULL;
+    *i = strtoul(str, &pos, 0);
+
+    if (pos == NULL || *pos != '\0')
+    {
+        return 0;
+    }
+
+    return 1;
 }
 
 int main(int argc, char** argv)
 {
-    if (argc != 4)
+    if (argc != 6)
     {
-        fprintf(stderr, "Usage: %s <map file> <x pos> <y pos>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <map file> <start x> <start y> <end x> <end y>\n", argv[0]);
         return 1;
     }
 
@@ -203,116 +238,46 @@ int main(int argc, char** argv)
         return 2;
     }
 
-    uint32_t x, y;
-
-    char* strpos = NULL;
-    x = strtoul(argv[2], &strpos, 0);
-    if (strpos == NULL || *strpos != '\0')
-    {
-        fclose(file);
-        fprintf(stderr, "%s is not a valid x position\n", argv[2]);
-        return 3;
-    }
-
-    strpos = NULL;
-    y = strtoul(argv[3], &strpos, 0);
-    if (strpos == NULL || *strpos != '\0')
-    {
-        fclose(file);
-        fprintf(stderr, "%s is not a valid x position\n", argv[3]);
-        return 3;
-    }
-
-    char type[256];
-    if (parse_map_metadata(type, 256, &width, &height, file) != 7)
+    if (parse_map_metadata(&width, &height, file) != 3)
     {
         fclose(file);
         fprintf(stderr, "%s is not a valid map file\n", argv[1]);
         return 2;
     }
 
-    if (x >= width || y >= height)
-    {
-        fclose(file);
-        fprintf(stderr, "(%u,%u) is not a valid starting position\n", x, y);
-        return 3;
-    }
-
     map = (char*) malloc(width * height);
     if (map == NULL)
     {
         fclose(file);
-        fprintf(stderr, "Not enough resources to create %ux%u map\n", width, height);
-        return 4;
+        fprintf(stderr, "Out of resources\n");
+        return 3;
     }
 
-    // Read map
-    for (uint32_t i = 0; i < width * height; ++i)
+    if (read_map(file) != 1)
     {
-        int c;
-        
-        while ((c = fgetc(file)) != EOF && c != '.' && c != '@');
-        if (c == EOF)
-        {
-            fclose(file);
-            free(map);
-            fprintf(stderr, "%s is not a valid map file\n", argv[1]);
-            return 2;
-        }
-
-        map[i] = c & 255;
+        fclose(file);
+        free(map);
+        fprintf(stderr, "%s is not a valid map file\n", argv[1]);
+        return 2;
     }
 
     fclose(file);
 
-    if (map[y * width + x] == '@')
+    uint32_t x, y, end_x, end_y;
+    
+    if (!read_int(&x, argv[2]) || !read_int(&y, argv[3]) || !read_int(&end_x, argv[4]) || !read_int(&end_y, argv[5]))
     {
-        free(map);
-        fprintf(stderr, "(%u,%u) is not a valid starting position\n", x, y);
-        return 3;
+        fprintf(stderr, "invalid coordinates\n");
+        return 1;
     }
 
-    fprintf(stderr, "Map: %s\nWidth: %u\nHeight: %u\nPosition: (%u, %u)\n", type, width, height, x, y);
+    fprintf(stderr, "Width: %u\nHeight: %u\nStart: (%u, %u)\nEnd: (%u, %u)\n", width, height, x, y, end_x, end_y);
 
     
     // Find exit points
     map_exits = (uint8_t*) malloc((width * height) >> 3);
     memset(map_exits, 0, (width * height) >> 3);
-    uint32_t num_exits = 0;
-
-    // Scan horizontal lines for exits
-    for (uint32_t i = 0; i < width; ++i)
-    {
-        if (map[i] == '.')
-        {
-            mark(map_exits, i);
-            ++num_exits;
-        }
-
-        if (map[(height - 1) * width + i] == '.')
-        {
-            mark(map_exits, (height - 1) * width + i);
-            ++num_exits;
-        }
-    }
-
-    // Scan vertical lines for exits
-    for (uint32_t j = 0; j < height; ++j)
-    {
-        if (map[j * width] == '.')
-        {
-            mark(map_exits, j * width);
-            ++num_exits;
-        }
-
-        if (map[j * width + height - 1] == '.')
-        {
-            mark(map_exits, j * width + height - 1);
-            ++num_exits;
-        }
-    }
-
-    printf("Exits found: %u\n", num_exits);
+    mark(map_exits, end_y * width + end_x);
 
     // Set distance to every node = INFINITY
     distances = (uint32_t*) malloc(sizeof(uint32_t) * (width * height));
@@ -331,12 +296,22 @@ int main(int argc, char** argv)
     closed_list = (uint8_t*) malloc((width * height) >> 3);
     memset(closed_list, 0, width * height);
 
-    uint32_t exit_node = find_closest_exit(y * width + x);
+    uint32_t exit_node = find_closest_exit(y * width + x, end_x, end_y);
     if (exit_node < width * height)
     {
         fprintf(stderr, "Exit found: (%u,%u)\n", exit_node % width, exit_node / width);
 
         print_path(exit_node);
+
+        for (uint32_t i = 0; i < width * height; ++i)
+        {
+            if (i % width == 0)
+            {
+                printf("\n");
+            }
+            printf("%c", map[i]);
+        }
+        printf("\n");
     }
     else
     {

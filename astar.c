@@ -4,17 +4,11 @@
 #include <string.h>
 #include <limits.h>
 #include <math.h>
+#include <float.h>
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-
-int manhatten(int sy, int sx, int dy, int dx) 
-{
-    int tx = abs(sx - dx);
-    int ty = abs(sy - dy);
-    return (2 * (tx + ty));
-}
 
 char* map = NULL;
 uint32_t width = 0, height = 0;
@@ -22,7 +16,7 @@ uint32_t width = 0, height = 0;
 uint8_t* map_exits = NULL;
 uint8_t* closed_list = NULL;
 
-uint32_t* distances = NULL;
+double* distances = NULL;
 uint32_t* path = NULL;
 uint32_t* heap = NULL;
 uint32_t heap_size = 0;
@@ -81,6 +75,23 @@ uint32_t heap_remove()
 }
 
 
+double manhatten(int64_t sx, int64_t sy, int64_t dx, int64_t dy) 
+{
+    int64_t tx = llabs(sx - dx);
+    int64_t ty = llabs(sy - dy);
+
+    return 2.0 * (tx + ty);
+}
+
+double chebyshev(int64_t sx, int64_t sy, int64_t dx, int64_t dy) 
+{
+    double D = 14.0;
+
+    int64_t tx = llabs(sx - dx);
+    int64_t ty = llabs(sy - dy);
+    return D * (tx + ty) + (D * 2.0 - 2.0 * D) * MIN(tx, ty);
+} 
+
 uint32_t find_closest_exit(uint32_t point, uint32_t e_x, uint32_t e_y)
 {
     distances[point] = 0;
@@ -112,7 +123,7 @@ uint32_t find_closest_exit(uint32_t point, uint32_t e_x, uint32_t e_y)
 
                 if (u != v && map[v] == '.' && !is_marked(closed_list, v))
                 {
-                    uint32_t alt = distances[u] + 1 + manhatten(x, y, e_x, e_y);
+                    double alt = distances[u] + 1 + manhatten(x, y, e_x, e_y); //chebyshev(x, y, e_x, e_y);
 
                     if (alt < distances[v])
                     {
@@ -206,7 +217,7 @@ void print_path(uint32_t node)
     {
         print_path(path[node]);
     }
-    printf("(%u,%u)\n", node % width, node / width);
+    fprintf(stderr, "(%u,%u)\n", node % width, node / width);
     map[(node / width) * height + node % width] = 'x';
 }
 
@@ -280,11 +291,11 @@ int main(int argc, char** argv)
     mark(map_exits, end_y * width + end_x);
 
     // Set distance to every node = INFINITY
-    distances = (uint32_t*) malloc(sizeof(uint32_t) * (width * height));
+    distances = (double*) malloc(sizeof(double) * (width * height));
     path = (uint32_t*) malloc(sizeof(uint32_t) * (width * height));
     for (uint32_t i = 0; i < width * height; ++i)
     {
-        distances[i] = UINT_MAX;
+        distances[i] = DBL_MAX;
         path[i] = width * height;
     }
 
@@ -305,7 +316,7 @@ int main(int argc, char** argv)
 
         for (uint32_t i = 0; i < width * height; ++i)
         {
-            if (i % width == 0)
+            if (i % width == 0 && i > 0)
             {
                 printf("\n");
             }

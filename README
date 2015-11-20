@@ -1,0 +1,5 @@
+Maps retrieved from: http://www.movingai.com/benchmarks/
+
+A* search implementation from: https://en.wikipedia.org/wiki/A*_search_algorithm#Pseudocode
+
+Run using ./a-star <start x> <start y> <target x> <target y> <map file>

@@ -347,6 +347,7 @@ int main(int argc, char** argv)
     {
         cost_lut[i] = width * height + 1.0;
     }
+    cost_lut['T'] = 5.0;
     cost_lut['@'] = width * height + 1.0;   // set cost of walls to infinity
     cost_lut['.'] = 1.0;                    // set cost of open space to 1
 

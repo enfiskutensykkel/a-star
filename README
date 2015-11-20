@@ -1,5 +1,13 @@
 Maps retrieved from: http://www.movingai.com/benchmarks/
 
-A* search implementation from: https://en.wikipedia.org/wiki/A*_search_algorithm#Pseudocode
+A* search implementation: 
+https://en.wikipedia.org/wiki/A*_search_algorithm#Pseudocode
+https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm#Using_a_priority_queue
+
+Binary heap implementation:
+https://en.wikipedia.org/wiki/Binary_heap#Heap_implementation
+
+Manhattan distance:
+http://theory.stanford.edu/~amitp/GameProgramming/Heuristics.html
 
 Run using ./a-star <start x> <start y> <target x> <target y> <map file>

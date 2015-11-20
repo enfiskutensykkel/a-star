@@ -161,7 +161,7 @@ void mark(uint8_t* bitmap, uint32_t point)
 
 
 
-double manhatten(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
+double manhattan(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
 {
     uint32_t tx, ty;
 
@@ -239,7 +239,7 @@ uint32_t search(
                 {
                     rev_path[v] = u;
                     g_costs[v] = alt;
-                    f_costs[v] = alt + cost_lut[map[v]] + manhatten(ux, uy, vx, vy);
+                    f_costs[v] = alt + cost_lut[map[v]] + manhattan(ux, uy, vx, vy);
 
                     heap_insert(open_list, &open_list_size, f_costs, v);
                 }

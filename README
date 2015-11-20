@@ -10,4 +10,4 @@ https://en.wikipedia.org/wiki/Binary_heap#Heap_implementation
 Heuristics are taken from:
 http://theory.stanford.edu/~amitp/GameProgramming/Heuristics.html
 
-Run using ./a-star <start x> <start y> <target x> <target y> <map file>
+Run using ./a-star start-x start-y target-x target-y map-file 2> map-output 1> path-list

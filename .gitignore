@@ -1,0 +1,8 @@
+# Ignore everything
+*
+
+# Unignore important stuff
+!*.c
+!Makefile
+!*.map
+

@@ -4,17 +4,18 @@ else
 CC := gcc
 endif
 
-COPTS := -Wall -Wextra -pedantic -g -O2
+COPTS := -Wall -Wextra -pedantic -O2
 
 .PHONY: a-star all clean
 
-all: a-star
+all: a-star dijkstra
 
 clean:
-	-$(RM) astar.o
+	-$(RM) a-star dijkstra
 
-a-star: astar.o
-	$(CC) -o $@ $^
+a-star: astar.c
+	$(CC) $(COPTS) -o $@ $< -lm
 
-%.o: %.c
-	$(CC) $(COPTS) -o $@ $< -c
+dijkstra: astar.c
+	$(CC) $(COPTS) -DDIJKSTRA -o $@ $< -lm
+

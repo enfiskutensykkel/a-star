@@ -2,6 +2,28 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
+
+#define D 8.0 // increase this to make A* run faster
+
+#define is_marked(bitmap, point) \
+    (!!((bitmap)[(point) >> 3] & (1 << ((point) & 7))))
+
+#define mark(bitmap, point) \
+    ((bitmap)[(point) >> 3] |= 1 << ((point) & 7))
+
+
+
+void set_cost_lut(double* cost_lut, uint32_t infinity)
+{
+    for (int i = 0; i < 256; ++i)
+    {
+        cost_lut[i] = infinity;
+    }
+    cost_lut['T'] = 5.0;
+    cost_lut['@'] = infinity;
+    cost_lut['.'] = 1.0;
+}
 
 
 
@@ -100,7 +122,7 @@ void print_map(const uint8_t* map, uint32_t width, uint32_t height)
 
 
 
-void heap_insert(uint32_t* heap, uint32_t* heap_size, double* fcosts, uint32_t point)
+inline void heap_insert(uint32_t* heap, uint32_t* heap_size, double* fcosts, uint32_t point)
 {
     uint32_t hole;
 
@@ -114,7 +136,7 @@ void heap_insert(uint32_t* heap, uint32_t* heap_size, double* fcosts, uint32_t p
 
 
 
-uint32_t heap_remove(uint32_t* heap, uint32_t* heap_size, double* fcosts)
+inline uint32_t heap_remove(uint32_t* heap, uint32_t* heap_size, double* fcosts)
 {
     uint32_t removed_point = heap[1];
 
@@ -147,35 +169,48 @@ uint32_t heap_remove(uint32_t* heap, uint32_t* heap_size, double* fcosts)
 
 
 
-int is_marked(uint8_t* bitmap, uint32_t point)
+inline double euclidean(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
 {
-    return !!(bitmap[point >> 3] & (1 << (point & 7)));
+    uint32_t dx, dy;
+
+    dx = (ux >= vx) ? ux - vx : vx - ux;
+    dy = (uy >= vy) ? uy - vy : vy - uy;
+
+    return D * sqrt(dx * dx + dy * dy);
 }
 
 
 
-void mark(uint8_t* bitmap, uint32_t point)
+inline double diagonal(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
 {
-    bitmap[point >> 3] |= 1 << (point & 7);
+    uint32_t dx, dy;
+
+    dx = (ux >= vx) ? ux - vx : vx - ux;
+    dy = (uy >= vy) ? uy - vy : vy - uy;
+
+    // octile distance... for chebyshev, change D2 to sqrt(2)
+    double D2 = 1.0;
+
+    return D * (dx + dy) + (D2 - 2.0 * D) * (dx < dy ? dx : dy);
 }
 
 
-
-double manhattan(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
+/*
+inline double manhattan(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
 {
-    uint32_t tx, ty;
+    uint32_t dx, dy;
 
-    tx = (ux >= vx) ? ux - vx : vx - ux;
-    ty = (uy >= vy) ? uy - vy : vy - uy;
+    dx = (ux >= vx) ? ux - vx : vx - ux;
+    dy = (uy >= vy) ? uy - vy : vy - uy;
 
-    return 2.0 * (tx + ty);
+    return D * (dx + dy);
 }
-
+*/
 
 
 uint32_t search(
         const uint8_t* map, uint32_t width, uint32_t height, 
-        double* cost_lut, uint32_t* rev_path, double* f_costs, uint32_t* g_costs,
+        double* cost_lut, uint32_t* rev_path, double* f_costs, double* g_costs,
         uint32_t* open_list, uint8_t* closed_list,
         uint32_t start, uint32_t target
         )
@@ -184,21 +219,22 @@ uint32_t search(
     for (uint32_t i = 0, n = width * height; i < n; ++i)
     {
         closed_list[i >> 3] = 0;
-        f_costs[i] = width * height + 1.0;  // set distance to infinity
-        g_costs[i] = width * height + 1;    // set distance to infinity
-        rev_path[i] = i;                    // set shortest path through self
+        rev_path[i] = i; // set shortest path through self
+        g_costs[i] = f_costs[i] = width * height + 1.0; // set distance to infinity
     }
 
     uint32_t open_list_size = 0;
 
     // Start off with start node
     f_costs[start] = 0.0;
-    g_costs[start] = 0;
+    g_costs[start] = 0.0;
     heap_insert(open_list, &open_list_size, f_costs, start);
 
     // Get target coordinates
+#ifndef DIJKSTRA
     uint32_t tx = target % width;
     uint32_t ty = target / height;
+#endif
 
     while (open_list_size > 0)
     {
@@ -214,7 +250,9 @@ uint32_t search(
         }
 
         // insert u into closed list
+#ifndef DIJKSTRA
         mark(closed_list, u);
+#endif
 
         // do some boundary checking magic
         uint32_t vx_lo = ux > 0 ? ux - 1 : 0;
@@ -229,26 +267,33 @@ uint32_t search(
             {
                 uint32_t v = vy * width + vx;
 
-                // if v is not marked
-                if (u == v && !is_marked(closed_list, v))
+                // skip self
+                if (u == v)
                 {
                     continue;
                 }
 
+#ifndef DIJKSTRA
+                // skip marked nodes
+                if (is_marked(closed_list, v))
+                {
+                    continue;
+                }
+#endif
+
                 // calculate tentative g score
-                uint32_t alt = g_costs[u] + 1;
+                double alt = g_costs[u] + cost_lut[map[v]] + euclidean(ux, uy, vx, vy);
 
                 // use u to reach v if path to v is shorter through u
                 if (alt < g_costs[v])
                 {
                     rev_path[v] = u;
                     g_costs[v] = alt;
-
-                    // something weird is going on... the top one is "correct", but the below
-                    // gives an optimal path instead of the "drunken walking"
-                    
-                    //f_costs[v] = alt + cost_lut[map[v]] + manhattan(vx, vy, tx, ty);
-                    f_costs[v] = alt + cost_lut[map[v]] + manhattan(ux, uy, vx, vy); 
+#ifndef DIJKSTRA
+                    f_costs[v] = alt + diagonal(vx, vy, tx, ty);
+#else
+                    f_costs[v] = alt;
+#endif
 
                     heap_insert(open_list, &open_list_size, f_costs, v);
                 }
@@ -323,7 +368,7 @@ int main(int argc, char** argv)
             sizeof(double) * 256 +          // object cost lookup table
             sizeof(uint32_t) * size +       // reverse path routing table
             sizeof(double) * size +         // f_cost table
-            sizeof(uint32_t) * size +       // g_cost table
+            sizeof(double) * size +         // g_cost table
             sizeof(uint32_t) * (size + 1) + // open list
             sizeof(uint8_t) * (size >> 3)   // closed list
             );
@@ -336,7 +381,7 @@ int main(int argc, char** argv)
     double* cost_lut = (double*) (map + size);
     uint32_t* path_tbl = (uint32_t*) (cost_lut + 256);
     double* f_costs = (double*) (path_tbl + size);
-    uint32_t* g_costs = (uint32_t*) (f_costs + size);
+    double* g_costs = (double*) (f_costs + size);
     uint32_t* olist = (uint32_t*) (g_costs + size);
     uint8_t* clist = (uint8_t*) (olist + size + 1);
 
@@ -352,13 +397,7 @@ int main(int argc, char** argv)
     fclose(file);
 
     // Make a cost look-up table
-    for (int i = 0; i < 256; ++i)
-    {
-        cost_lut[i] = width * height + 1.0;
-    }
-    cost_lut['T'] = 5.0;
-    cost_lut['@'] = width * height + 1.0;   // set cost of walls to infinity
-    cost_lut['.'] = 1.0;                    // set cost of open space to 1
+    set_cost_lut(cost_lut, width * height + 1);
 
     // Calculate start coordinates and target coordinates
     uint32_t start = coordinates[1] * width + coordinates[0];

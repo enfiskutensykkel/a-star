@@ -5,13 +5,8 @@
 
 
 
-int read_map(FILE* file, char* map, uint64_t* objects, uint32_t width, uint32_t height)
+int read_map(FILE* file, uint8_t* map, uint32_t width, uint32_t height)
 {
-    for (int i = 0; i < 256; ++i)
-    {
-        objects[i] = 0;
-    }
-
     for (uint32_t i = 0, n = width * height; i < n; ++i)
     {
         int c;
@@ -24,7 +19,6 @@ int read_map(FILE* file, char* map, uint64_t* objects, uint32_t width, uint32_t 
         }
 
         map[i] = c & 255;
-        ++objects[c & 255];
     }
 
     return 1;
@@ -79,21 +73,22 @@ int read_metadata(FILE* file, uint32_t* width, uint32_t* height)
 
 
 
-void print_path(char* map, uint32_t width, uint32_t height, uint32_t* rev_path, uint32_t point)
+void print_path(uint8_t* map, uint32_t width, uint32_t height, uint32_t* rev_path, uint32_t point)
 {
     if (rev_path[point] != point && rev_path[point] < width * height)
     {
         print_path(map, width, height, rev_path, rev_path[point]);
     }
     fprintf(stdout, "(%u,%u)\n", point % width, point / height);
-    map[(point / height) * width + (point % width)] = 'x';
+
+    map[(point / height) * width + (point % width)] = 'X';
 }
 
 
 
-void print_map(char* map, uint32_t width, uint32_t height)
+void print_map(const uint8_t* map, uint32_t width, uint32_t height)
 {
-    for (uint32_t y = 0; y < width; ++y)
+    for (uint32_t y = 0; y < height; ++y)
     {
         for (uint32_t x = 0; x < width; ++x)
         {
@@ -168,7 +163,7 @@ void mark(uint8_t* bitmap, uint32_t point)
 
 double manhatten(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
 {
-    uint64_t tx, ty;
+    uint32_t tx, ty;
 
     tx = (ux >= vx) ? ux - vx : vx - ux;
     ty = (uy >= vy) ? uy - vy : vy - uy;
@@ -178,29 +173,25 @@ double manhatten(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
 
 
 
-uint32_t search(char* map, uint32_t width, uint32_t height, double* cost_lut, uint32_t* rev_path, uint32_t start, uint32_t target)
+uint32_t search(
+        const uint8_t* map, uint32_t width, uint32_t height, 
+        double* cost_lut, uint32_t* rev_path, double* f_costs, uint32_t* g_costs,
+        uint32_t* open_list, uint8_t* closed_list,
+        uint32_t start, uint32_t target
+        )
 {
-    // Allocate resources
-    double* f_costs = (double*) malloc(sizeof(double) * width * height);
-    uint32_t* g_costs = (uint32_t*) malloc(sizeof(uint32_t) * width * height);
-    uint8_t* closed_list = (uint8_t*) malloc(width * height);
-
     // Initialize closed list and cost table and reverse path
     for (uint32_t i = 0, n = width * height; i < n; ++i)
     {
         closed_list[i >> 3] = 0;
-        f_costs[i] = width * height; // infinity
-        g_costs[i] = width * height;
-        rev_path[i] = i;
+        f_costs[i] = width * height + 1.0;  // set distance to infinity
+        g_costs[i] = width * height + 1;    // set distance to infinity
+        rev_path[i] = i;                    // set shortest path through self
     }
 
-    // Initialize open list
-    uint32_t* open_list = (uint32_t*) malloc(sizeof(uint32_t) * width * height);
     uint32_t open_list_size = 0;
 
-    uint32_t found = width * height;
-
-    // Initalize with start node
+    // Start off with start node
     f_costs[start] = 0.0;
     g_costs[start] = 0;
     heap_insert(open_list, &open_list_size, f_costs, start);
@@ -212,10 +203,10 @@ uint32_t search(char* map, uint32_t width, uint32_t height, double* cost_lut, ui
         uint32_t ux = u % width;
         uint32_t uy = u / height;
 
+        // check if u is our target
         if (u == target)
         {
-            found = u;
-            break;
+            return u;
         }
 
         // insert u into closed list
@@ -256,11 +247,8 @@ uint32_t search(char* map, uint32_t width, uint32_t height, double* cost_lut, ui
         }
     }
 
-    free(open_list);
-    free(closed_list);
-    free(f_costs);
-    free(g_costs);
-    return found;
+    // return an illegal point to indicate that no path was found
+    return width * height;
 }
 
 
@@ -319,13 +307,34 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    char* map = (char*) malloc(width * height);
-    uint64_t objects[256];
+    // Allocate resources
+    size_t size = width * height;
+    void* mem = malloc(
+            sizeof(uint8_t) * size +        // map
+            sizeof(double) * 256 +          // object cost lookup table
+            sizeof(uint32_t) * size +       // reverse path routing table
+            sizeof(double) * size +         // f_cost table
+            sizeof(uint32_t) * size +       // g_cost table
+            sizeof(uint32_t) * (size + 1) + // open list
+            sizeof(uint8_t) * (size >> 3)   // closed list
+            );
+    if (mem == NULL)
+    {
+        fprintf(stderr, "Not enough resources\n");
+        return 1;
+    }
+    uint8_t* map = (uint8_t*) mem;
+    double* cost_lut = (double*) (map + size);
+    uint32_t* path_tbl = (uint32_t*) (cost_lut + 256);
+    double* f_costs = (double*) (path_tbl + size);
+    uint32_t* g_costs = (uint32_t*) (f_costs + size);
+    uint32_t* olist = (uint32_t*) (g_costs + size);
+    uint8_t* clist = (uint8_t*) (olist + size + 1);
 
     // Parse map file
-    if (!read_map(file, map, objects, width, height))
+    if (!read_map(file, map, width, height))
     {
-        free(map);
+        free(mem);
         fclose(file);
         fprintf(stderr, "Couldn't parse map '%s'\n", argv[5]);
         return 1;
@@ -333,44 +342,24 @@ int main(int argc, char** argv)
 
     fclose(file);
 
-    uint32_t sx, sy, tx, ty;
-    sx = (uint32_t) coordinates[0];
-    sy = (uint32_t) coordinates[1];
-    tx = (uint32_t) coordinates[2];
-    ty = (uint32_t) coordinates[3];
-
-    // Print some info
-//    fprintf(stderr, "Map            : %s (%u x %u)\n", argv[5], width, height);
-//    fprintf(stderr, "Objects in map :");
-//    for (int i = 0; i < 256; ++i)
-//    {
-//        if (objects[i] > 0)
-//        {
-//            fprintf(stderr, " %c", i);
-//        }
-//    }
-//    fprintf(stderr, "\n");
-//    fprintf(stderr, "Starting coords: (%u,%u)\n", sx, sy);
-//    fprintf(stderr, "Target coords  : (%u,%u)\n", tx, ty);
-
-    
     // Make a cost look-up table
-    double cost_lut[256];
-    cost_lut['@'] = (width * height) * 2.0; // set cost of walls to infinity
-    cost_lut['.'] = 1.0;
-
-    // Make routing table
-    uint32_t* reverse_path = (uint32_t*) malloc(sizeof(uint32_t) * width * height);
-
-    uint32_t s = sy * width + sx;
-    uint32_t t = ty * width + tx;
-
-    uint32_t exit_point = search(map, width, height, cost_lut, reverse_path, s, t);
-
-    if (exit_point == t)
+    for (int i = 0; i < 256; ++i)
     {
-        print_path(map, width, height, reverse_path, exit_point);
+        cost_lut[i] = width * height + 1.0;
+    }
+    cost_lut['@'] = width * height + 1.0;   // set cost of walls to infinity
+    cost_lut['.'] = 1.0;                    // set cost of open space to 1
 
+    // Calculate start coordinates and target coordinates
+    uint32_t start = coordinates[1] * width + coordinates[0];
+    uint32_t target = coordinates[3] * width + coordinates[2];
+
+    // Calculate shortest path to target point
+    uint32_t exit_point = search(map, width, height, cost_lut, path_tbl, f_costs, g_costs, olist, clist, start, target);
+
+    if (exit_point == target)
+    {
+        print_path(map, width, height, path_tbl, exit_point);
         print_map(map, width, height);
     }
     else
@@ -378,8 +367,7 @@ int main(int argc, char** argv)
         printf("No path found\n");
     }
 
-    free(reverse_path);
-    free(map);
+    free(mem);
 
     return 0;
 }

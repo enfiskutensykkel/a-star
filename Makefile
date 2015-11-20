@@ -4,7 +4,7 @@ else
 CC := gcc
 endif
 
-COPTS := -Wall -Wextra -pedantic -g
+COPTS := -Wall -Wextra -pedantic -g -O2
 
 .PHONY: a-star all clean
 

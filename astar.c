@@ -196,6 +196,10 @@ uint32_t search(
     g_costs[start] = 0;
     heap_insert(open_list, &open_list_size, f_costs, start);
 
+    // Get target coordinates
+    uint32_t tx = target % width;
+    uint32_t ty = target / height;
+
     while (open_list_size > 0)
     {
         // remove from open list the point u with smallest f_cost
@@ -239,7 +243,12 @@ uint32_t search(
                 {
                     rev_path[v] = u;
                     g_costs[v] = alt;
-                    f_costs[v] = alt + cost_lut[map[v]] + manhattan(ux, uy, vx, vy);
+
+                    // something weird is going on... the top one is "correct", but the below
+                    // gives an optimal path instead of the "drunken walking"
+                    
+                    //f_costs[v] = alt + cost_lut[map[v]] + manhattan(vx, vy, tx, ty);
+                    f_costs[v] = alt + cost_lut[map[v]] + manhattan(ux, uy, vx, vy); 
 
                     heap_insert(open_list, &open_list_size, f_costs, v);
                 }

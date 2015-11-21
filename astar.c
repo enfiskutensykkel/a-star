@@ -20,9 +20,28 @@ void set_cost_lut(double* cost_lut, uint32_t infinity)
     {
         cost_lut[i] = infinity;
     }
-    cost_lut['T'] = 5.0;
-    cost_lut['@'] = infinity;
     cost_lut['.'] = 1.0;
+    cost_lut['G'] = 1.0;
+    cost_lut['@'] = infinity;
+    cost_lut['O'] = infinity;
+    cost_lut['T'] = infinity;
+    cost_lut['S'] = 5.0;
+    cost_lut['W'] = 15.0;
+}
+
+
+
+inline int valid(int c)
+{
+    const char* obstacles = ".G@OTSW";
+    for (int i = 0; i < 7; ++i)
+    {
+        if (c == obstacles[i])
+        {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 
@@ -33,7 +52,7 @@ int read_map(FILE* file, uint8_t* map, uint32_t width, uint32_t height)
     {
         int c;
 
-        while ((c = fgetc(file)) != EOF && (c < 0x20 || c > 0x7e));
+        while ((c = fgetc(file)) != EOF && !valid(c));
 
         if (c == EOF)
         {
@@ -101,9 +120,9 @@ void print_path(uint8_t* map, uint32_t width, uint32_t height, uint32_t* rev_pat
     {
         print_path(map, width, height, rev_path, rev_path[point]);
     }
-    fprintf(stdout, "(%u,%u)\n", point % width, point / height);
+    fprintf(stdout, "(%u,%u)\n", point % width, point / width);
 
-    map[(point / height) * width + (point % width)] = 'X';
+    map[point] = 'X';
 }
 
 
@@ -208,6 +227,7 @@ inline double manhattan(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
 */
 
 
+
 uint32_t search(
         const uint8_t* map, uint32_t width, uint32_t height, 
         double* cost_lut, uint32_t* rev_path, double* f_costs, double* g_costs,
@@ -230,10 +250,10 @@ uint32_t search(
     g_costs[start] = 0.0;
     heap_insert(open_list, &open_list_size, f_costs, start);
 
-    // Get target coordinates
 #ifndef DIJKSTRA
+    // Get target coordinates
     uint32_t tx = target % width;
-    uint32_t ty = target / height;
+    uint32_t ty = target / width;
 #endif
 
     while (open_list_size > 0)
@@ -241,7 +261,7 @@ uint32_t search(
         // remove from open list the point u with smallest f_cost
         uint32_t u = heap_remove(open_list, &open_list_size, f_costs);
         uint32_t ux = u % width;
-        uint32_t uy = u / height;
+        uint32_t uy = u / width;
 
         // check if u is our target
         if (u == target)
@@ -249,8 +269,8 @@ uint32_t search(
             return u;
         }
 
-        // insert u into closed list
 #ifndef DIJKSTRA
+        // insert u into closed list
         mark(closed_list, u);
 #endif
 
@@ -294,7 +314,6 @@ uint32_t search(
 #else
                     f_costs[v] = alt;
 #endif
-
                     heap_insert(open_list, &open_list_size, f_costs, v);
                 }
             }

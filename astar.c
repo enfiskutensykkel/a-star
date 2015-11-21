@@ -4,6 +4,7 @@
 #include <string.h>
 #include <math.h>
 
+
 #define D 8.0 // increase this to make A* run faster
 
 #define is_marked(bitmap, point) \
@@ -190,6 +191,7 @@ inline uint32_t heap_remove(uint32_t* heap, uint32_t* heap_size, double* fcosts)
 
 inline double euclidean(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
 {
+    // calculate Euclidean distance
     uint32_t dx, dy;
 
     dx = (ux >= vx) ? ux - vx : vx - ux;
@@ -200,8 +202,10 @@ inline double euclidean(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
 
 
 
-inline double diagonal(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
+#ifdef ALLOW_DIAGONAL
+inline double heuristic(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
 {
+    // calculate octile distance distance
     uint32_t dx, dy;
 
     dx = (ux >= vx) ? ux - vx : vx - ux;
@@ -212,11 +216,10 @@ inline double diagonal(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
 
     return D * (dx + dy) + (D2 - 2.0 * D) * (dx < dy ? dx : dy);
 }
-
-
-/*
-inline double manhattan(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
+#else
+inline double heuristic(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
 {
+    // Manhattan distance
     uint32_t dx, dy;
 
     dx = (ux >= vx) ? ux - vx : vx - ux;
@@ -224,7 +227,63 @@ inline double manhattan(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
 
     return D * (dx + dy);
 }
-*/
+#endif
+
+
+
+#ifdef ALLOW_DIAGONAL
+inline int find_neighbours(uint32_t width, uint32_t height, uint32_t ux, uint32_t uy, uint32_t* neighbours)
+{
+    // do some boundary checking magic
+    uint32_t vx_lo = ux > 0 ? ux - 1 : 0;
+    uint32_t vx_hi = ux < width - 1 ? ux + 1 : width - 1;
+    uint32_t vy_lo = uy > 0 ? uy - 1: 0;
+    uint32_t vy_hi = uy < height - 1 ? uy + 1 : height - 1;
+
+    int neighbour_count = 0;
+
+    // add neighbours to neighbour list
+    for (uint32_t vy = vy_lo; vy <= vy_hi; ++vy)
+    {
+        for (uint32_t vx = vx_lo; vx <= vx_hi; ++vx)
+        {
+            if (ux != vx || uy != vy) // skip selv
+            {
+                neighbours[neighbour_count++] = vy * width + vx;
+            }
+        }
+    }
+
+    return neighbour_count;
+}
+#else
+inline int find_neighbours_cross(uint32_t width, uint32_t height, uint32_t ux, uint32_t uy, uint32_t* neighbours)
+{
+    int neighbour_count = 0;
+
+    // find left and right neighbours
+    if (ux > 0)
+    {
+        neighbours[neighbour_count++] = uy * width + (ux - 1);
+    }
+    if (ux < width - 1)
+    {
+        neighbours[neighbour_count++] = uy * width + (ux + 1);
+    }
+
+    // find top and bottom neighbour
+    if (uy > 0)
+    {
+        neighbours[neighbour_count++] = (uy - 1) * width + ux;
+    }
+    if (uy < height - 1)
+    {
+        neighbours[neighbour_count++] = (uy + 1) * width + ux;
+    }
+
+    return neighbour_count;
+}
+#endif
 
 
 
@@ -274,48 +333,40 @@ uint32_t search(
         mark(closed_list, u);
 #endif
 
-        // do some boundary checking magic
-        uint32_t vx_lo = ux > 0 ? ux - 1 : 0;
-        uint32_t vx_hi = ux < width - 1 ? ux + 1 : width - 1;
-        uint32_t vy_lo = uy > 0 ? uy - 1: 0;
-        uint32_t vy_hi = uy < height - 1 ? uy + 1 : height - 1;
+        uint32_t neighbours[8];
+        int neighbour_count = find_neighbours(width, height, ux, uy, neighbours);
 
         // for neighbour v of u:
-        for (uint32_t vy = vy_lo; vy <= vy_hi; ++vy)
+        for (int v_idx = 0; v_idx < neighbour_count; ++v_idx)
         {
-            for (uint32_t vx = vx_lo; vx <= vx_hi; ++vx)
+            uint32_t v = neighbours[v_idx];
+
+#ifndef DIJKSTRA
+            // skip marked nodes
+            if (is_marked(closed_list, v))
             {
-                uint32_t v = vy * width + vx;
-
-                // skip self
-                if (u == v)
-                {
-                    continue;
-                }
-
-#ifndef DIJKSTRA
-                // skip marked nodes
-                if (is_marked(closed_list, v))
-                {
-                    continue;
-                }
+                continue;
+            }
 #endif
 
-                // calculate tentative g score
-                double alt = g_costs[u] + cost_lut[map[v]] + euclidean(ux, uy, vx, vy);
+            // extract v coordinates
+            uint32_t vx = v % width;
+            uint32_t vy = v / width;
 
-                // use u to reach v if path to v is shorter through u
-                if (alt < g_costs[v])
-                {
-                    rev_path[v] = u;
-                    g_costs[v] = alt;
+            // calculate tentative g score
+            double alt = g_costs[u] + cost_lut[map[v]] + euclidean(ux, uy, vx, vy);
+
+            // use u to reach v if path to v is shorter through u
+            if (alt < g_costs[v])
+            {
+                rev_path[v] = u;
+                g_costs[v] = alt;
 #ifndef DIJKSTRA
-                    f_costs[v] = alt + diagonal(vx, vy, tx, ty);
+                f_costs[v] = alt + heuristic(vx, vy, tx, ty);
 #else
-                    f_costs[v] = alt;
+                f_costs[v] = alt;
 #endif
-                    heap_insert(open_list, &open_list_size, f_costs, v);
-                }
+                heap_insert(open_list, &open_list_size, f_costs, v);
             }
         }
     }

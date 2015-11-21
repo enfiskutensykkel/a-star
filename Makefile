@@ -4,6 +4,7 @@ else
 CC := gcc
 endif
 
+DEFS  := -DALLOW_DIAGONAL
 COPTS := -std=c99 -Wall -Wextra -pedantic -O2
 
 .PHONY: a-star all clean
@@ -14,8 +15,8 @@ clean:
 	-$(RM) a-star dijkstra
 
 a-star: astar.c
-	$(CC) $(COPTS) -o $@ $< -lm
+	$(CC) $(COPTS) $(DEFS) -o $@ $< -lm
 
 dijkstra: astar.c
-	$(CC) $(COPTS) -DDIJKSTRA -o $@ $< -lm
+	$(CC) $(COPTS) $(DEFS) -DDIJKSTRA -o $@ $< -lm
 

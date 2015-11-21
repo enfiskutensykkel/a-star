@@ -5,7 +5,7 @@
 #include <math.h>
 
 
-#define D 8.0 // increase this to make A* run faster
+#define D 1.0 
 
 #define is_marked(bitmap, point) \
     (!!((bitmap)[(point) >> 3] & (1 << ((point) & 7))))
@@ -201,7 +201,9 @@ inline double euclidean(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
 }
 
 
-
+#ifdef DIJKSTRA
+#define heuristic(ux, uy, vx, vy) 0.0
+#else
 #ifdef ALLOW_DIAGONAL
 inline double heuristic(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
 {
@@ -227,6 +229,7 @@ inline double heuristic(uint32_t ux, uint32_t uy, uint32_t vx, uint32_t vy)
 
     return D * (dx + dy);
 }
+#endif
 #endif
 
 
@@ -303,17 +306,19 @@ uint32_t search(
     }
 
     uint32_t open_list_size = 0;
-
-    // Start off with start node
-    f_costs[start] = 0.0;
-    g_costs[start] = 0.0;
-    heap_insert(open_list, &open_list_size, f_costs, start);
+    double tiebreaker = 0.001;
 
 #ifndef DIJKSTRA
     // Get target coordinates
     uint32_t tx = target % width;
     uint32_t ty = target / width;
 #endif
+
+    // Start off with start node
+    f_costs[start] = heuristic(start % width, start / width, tx, ty);
+    g_costs[start] = 0.0;
+    heap_insert(open_list, &open_list_size, f_costs, start);
+
 
     while (open_list_size > 0)
     {
@@ -361,11 +366,8 @@ uint32_t search(
             {
                 rev_path[v] = u;
                 g_costs[v] = alt;
-#ifndef DIJKSTRA
-                f_costs[v] = alt + heuristic(vx, vy, tx, ty);
-#else
-                f_costs[v] = alt;
-#endif
+                f_costs[v] = g_costs[v] + heuristic(vx, vy, tx, ty) * tiebreaker;
+
                 heap_insert(open_list, &open_list_size, f_costs, v);
             }
         }

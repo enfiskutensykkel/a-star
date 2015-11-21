@@ -6,16 +6,14 @@ endif
 
 COPTS := -std=c99 -Wall -Wextra -pedantic -O2
 
-.PHONY: a-star all clean
+.PHONY: all clean diagonal
 
-all: a-star dijkstra
+all: astar.c
+	$(CC) $(COPTS) $(DEFS) -o a-star $< -lm
+	$(CC) $(COPTS) $(DEFS) -DDIJKSTRA -o dijkstra $< -lm
 
 clean:
 	-$(RM) a-star dijkstra
 
-a-star: astar.c
-	$(CC) $(COPTS) -o $@ $< -lm
-
-dijkstra: astar.c
-	$(CC) $(COPTS) -DDIJKSTRA -o $@ $< -lm
-
+diagonal: DEFS += -DALLOW_DIAGONAL
+diagonal: all

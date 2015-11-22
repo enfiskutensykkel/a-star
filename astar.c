@@ -4,8 +4,12 @@
 #include <string.h>
 #include <math.h>
 
-
 #define D 1.0 
+
+#define TRAVERSED 'x'
+#define ENTRY_POINT 's'
+#define EXIT_POINT 't'
+
 
 #define is_marked(bitmap, point) \
     (!!((bitmap)[(point) >> 3] & (1 << ((point) & 7))))
@@ -123,7 +127,7 @@ void print_path(uint8_t* map, uint32_t width, uint32_t height, uint32_t* rev_pat
     }
     fprintf(stdout, "(%u,%u)\n", point % width, point / width);
 
-    map[point] = 'X';
+    map[point] = TRAVERSED;
 }
 
 
@@ -306,7 +310,6 @@ uint32_t search(
     }
 
     uint32_t open_list_size = 0;
-    double tiebreaker = 0.001;
 
 #ifndef DIJKSTRA
     // Get target coordinates
@@ -366,7 +369,7 @@ uint32_t search(
             {
                 rev_path[v] = u;
                 g_costs[v] = alt;
-                f_costs[v] = g_costs[v] + heuristic(vx, vy, tx, ty) * tiebreaker;
+                f_costs[v] = g_costs[v] + heuristic(vx, vy, tx, ty);
 
                 heap_insert(open_list, &open_list_size, f_costs, v);
             }
@@ -477,16 +480,18 @@ int main(int argc, char** argv)
 
     // Calculate shortest path to target point
     uint32_t exit_point = search(map, width, height, cost_lut, path_tbl, f_costs, g_costs, olist, clist, start, target);
-
+    
     if (exit_point == target)
     {
         print_path(map, width, height, path_tbl, exit_point);
-        print_map(map, width, height);
     }
     else
     {
         printf("No path found\n");
     }
+    map[start] = ENTRY_POINT;
+    map[target] = EXIT_POINT;
+    print_map(map, width, height);
 
     free(mem);
 
